@@ -1,12 +1,12 @@
-//
-//  query.swift
-//  html2jwpub
-//
-//  Created by Dario Ragusa on 11/05/25.
-//
+"""SQLite database schema and INSERT queries for JWPUB files.
 
-struct dbQuery {
-    let InitStructure: String = """
+Ported from dbQuery.swift (html2jwpub project).
+"""
+
+MEPS_BUILD_NUMBER = 12345
+PUBLICATION_TYPE = "Manual/Guidelines"
+
+INIT_STRUCTURE = """
 BEGIN TRANSACTION;
 DROP TABLE IF EXISTS "Publication";
 CREATE TABLE IF NOT EXISTS "Publication" (
@@ -758,21 +758,79 @@ CREATE INDEX IF NOT EXISTS "idx_ExtractVideoMarkerRange_LastExtractVideoMarkerId
 );
 COMMIT;
 """
-    let AndroidMetadata = "INSERT INTO android_metadata VALUES ('en_US');"
-    let Publication = "INSERT INTO Publication (PublicationId, VersionNumber, Type, Title, TitleRich, RootSymbol, RootYear, RootMepsLanguageIndex, ShortTitle, ShortTitleRich, DisplayTitle, DisplayTitleRich, ReferenceTitle, ReferenceTitleRich, UndatedReferenceTitle, UndatedReferenceTitleRich, Symbol, UndatedSymbol, UniqueSymbol, EnglishSymbol, UniqueEnglishSymbol, IssueTagNumber, IssueNumber, Variation, Year, VolumeNumber, MepsLanguageIndex, PublicationType, PublicationCategorySymbol, BibleVersionForCitations, HasPublicationChapterNumbers, HasPublicationSectionNumbers, FirstDatedTextDateOffset, LastDatedTextDateOffset, MepsBuildNumber) VALUES (1,8,1,?,NULL,?,?,0,?,NULL,?,NULL,?,NULL,?,NULL,?,?,?,?,?,'0',0,'',?,0,?,'Manual/Guidelines','manual','NWTR',1,1,19691231,19691231,?);"
-    let RefPublication = "INSERT INTO RefPublication (RefPublicationId, VersionNumber, Type, Title, TitleRich, RootSymbol, RootYear, RootMepsLanguageIndex, ShortTitle, ShortTitleRich, DisplayTitle, DisplayTitleRich, ReferenceTitle, ReferenceTitleRich, UndatedReferenceTitle, UndatedReferenceTitleRich, Symbol, UndatedSymbol, UniqueSymbol, EnglishSymbol, UniqueEnglishSymbol, IssueTagNumber, IssueNumber, Variation, Year, VolumeNumber, MepsLanguageIndex, PublicationType, PublicationCategorySymbol, BibleVersionForCitations, HasPublicationChapterNumbers, HasPublicationSectionNumbers, FirstDatedTextDateOffset, LastDatedTextDateOffset, MepsBuildNumber) VALUES (1,8,1,?,NULL,?,?,0,?,NULL,?,NULL,?,NULL,?,NULL,?,?,?,?,?,'0',0,'',?,0,?,'Manual/Guidelines','manual','NWTR',1,1,19691231,19691231,?);"
-    let PublicationAttribute = "INSERT INTO PublicationAttribute (PublicationAttributeId, PublicationId, Attribute) VALUES (1,1,'PERSONAL');"
-    let PublicationCategory = "INSERT INTO PublicationCategory (PublicationCategoryId, PublicationId, Category) VALUES (1,1,'manual');"
-    let PublicationView = "INSERT INTO PublicationView (PublicationViewId, Name, Symbol) VALUES (1,'JW App Publication','jwpub');"
-    let PublicationViewSchema = "INSERT INTO PublicationViewSchema (PublicationViewSchemaId, SchemaType, DataType) VALUES (1,0,'name');"
-    func PublicationYear(year: Int) -> String {
-        return "INSERT INTO PublicationYear (PublicationYearId, PublicationId, Year) VALUES (1,1,\(year));"
-    }
-    let Document = "INSERT INTO Document (DocumentId, PublicationId, MepsDocumentId, MepsLanguageIndex, Class, Type, SectionNumber, ChapterNumber, Title, TitleRich, TocTitle, TocTitleRich, ContextTitle, ContextTitleRich, FeatureTitle, FeatureTitleRich, Subtitle, SubtitleRich, FeatureSubtitle, FeatureSubtitleRich, Content, FirstFootnoteId, LastFootnoteId, FirstBibleCitationId, LastBibleCitationId, ParagraphCount, HasMediaLinks, HasLinks, FirstPageNumber, LastPageNumber, ContentLength, PreferredPresentation, ContentReworkedDate) VALUES (?,1,?,?,'13',0,1,NULL,?,NULL,?,NULL,'',NULL,NULL,NULL,NULL,NULL,NULL,NULL,?,NULL,NULL,NULL,NULL,254,0,0,1,1,?,NULL,NULL);"
-    let TextUnit = "INSERT INTO TextUnit (TextUnitId, Type, Id) VALUES (?,'Document',?);"
-    let PublicationViewItem = "INSERT INTO PublicationViewItem (PublicationViewItemId, PublicationViewId, ParentPublicationViewItemId, Title, TitleRich, SchemaType, ChildTemplateSchemaType, DefaultDocumentId) VALUES (?,1,?,?,NULL,0,?,?);"
-    let PublicationViewItemDocument = "INSERT INTO PublicationViewItemDocument (PublicationViewItemDocumentId, PublicationViewItemId, DocumentId) VALUES (?,?,?);"
-    let PublicationViewItemField = "INSERT INTO PublicationViewItemField (PublicationViewItemFieldId, PublicationViewItemId, Value, ValueRich, Type) VALUES (?,?,?,NULL,'name');"
-    let Multimedia = "INSERT INTO Multimedia(MultimediaId, DataType, MajorType, MinorType, MimeType, Caption, FilePath, CategoryType) VALUES(?,?,?,?,?,?,?,?)"
-    let DocumentMultimedia = "INSERT INTO DocumentMultimedia(DocumentId, MultimediaId) VALUES(?,?)"
-}
+
+# --- INSERT queries (parameterized with ?) ---
+
+INSERT_ANDROID_METADATA = "INSERT INTO android_metadata VALUES ('en_US');"
+
+INSERT_PUBLICATION = (
+    "INSERT INTO Publication (PublicationId, VersionNumber, Type, Title, TitleRich, "
+    "RootSymbol, RootYear, RootMepsLanguageIndex, ShortTitle, ShortTitleRich, "
+    "DisplayTitle, DisplayTitleRich, ReferenceTitle, ReferenceTitleRich, "
+    "UndatedReferenceTitle, UndatedReferenceTitleRich, Symbol, UndatedSymbol, "
+    "UniqueSymbol, EnglishSymbol, UniqueEnglishSymbol, IssueTagNumber, IssueNumber, "
+    "Variation, Year, VolumeNumber, MepsLanguageIndex, PublicationType, "
+    "PublicationCategorySymbol, BibleVersionForCitations, HasPublicationChapterNumbers, "
+    "HasPublicationSectionNumbers, FirstDatedTextDateOffset, LastDatedTextDateOffset, "
+    "MepsBuildNumber) VALUES "
+    "(1,8,1,?,NULL,?,?,0,?,NULL,?,NULL,?,NULL,?,NULL,?,?,?,?,?,'0',0,'',?,0,?,"
+    "'Manual/Guidelines','manual','NWTR',1,1,19691231,19691231,?);"
+)
+
+INSERT_REF_PUBLICATION = (
+    "INSERT INTO RefPublication (RefPublicationId, VersionNumber, Type, Title, TitleRich, "
+    "RootSymbol, RootYear, RootMepsLanguageIndex, ShortTitle, ShortTitleRich, "
+    "DisplayTitle, DisplayTitleRich, ReferenceTitle, ReferenceTitleRich, "
+    "UndatedReferenceTitle, UndatedReferenceTitleRich, Symbol, UndatedSymbol, "
+    "UniqueSymbol, EnglishSymbol, UniqueEnglishSymbol, IssueTagNumber, IssueNumber, "
+    "Variation, Year, VolumeNumber, MepsLanguageIndex, PublicationType, "
+    "PublicationCategorySymbol, BibleVersionForCitations, HasPublicationChapterNumbers, "
+    "HasPublicationSectionNumbers, FirstDatedTextDateOffset, LastDatedTextDateOffset, "
+    "MepsBuildNumber) VALUES "
+    "(1,8,1,?,NULL,?,?,0,?,NULL,?,NULL,?,NULL,?,NULL,?,?,?,?,?,'0',0,'',?,0,?,"
+    "'Manual/Guidelines','manual','NWTR',1,1,19691231,19691231,?);"
+)
+
+INSERT_PUBLICATION_ATTRIBUTE = "INSERT INTO PublicationAttribute (PublicationAttributeId, PublicationId, Attribute) VALUES (1,1,'PERSONAL');"
+INSERT_PUBLICATION_CATEGORY = "INSERT INTO PublicationCategory (PublicationCategoryId, PublicationId, Category) VALUES (1,1,'manual');"
+INSERT_PUBLICATION_VIEW = "INSERT INTO PublicationView (PublicationViewId, Name, Symbol) VALUES (1,'JW App Publication','jwpub');"
+INSERT_PUBLICATION_VIEW_SCHEMA = "INSERT INTO PublicationViewSchema (PublicationViewSchemaId, SchemaType, DataType) VALUES (1,0,'name');"
+
+INSERT_PUBLICATION_YEAR = "INSERT INTO PublicationYear (PublicationYearId, PublicationId, Year) VALUES (1,1,?);"
+
+INSERT_DOCUMENT = (
+    "INSERT INTO Document (DocumentId, PublicationId, MepsDocumentId, MepsLanguageIndex, "
+    "Class, Type, SectionNumber, ChapterNumber, Title, TitleRich, TocTitle, TocTitleRich, "
+    "ContextTitle, ContextTitleRich, FeatureTitle, FeatureTitleRich, Subtitle, SubtitleRich, "
+    "FeatureSubtitle, FeatureSubtitleRich, Content, FirstFootnoteId, LastFootnoteId, "
+    "FirstBibleCitationId, LastBibleCitationId, ParagraphCount, HasMediaLinks, HasLinks, "
+    "FirstPageNumber, LastPageNumber, ContentLength, PreferredPresentation, "
+    "ContentReworkedDate) VALUES "
+    "(?,1,?,?,'13',0,1,NULL,?,NULL,?,NULL,'',NULL,NULL,NULL,NULL,NULL,NULL,NULL,"
+    "?,NULL,NULL,NULL,NULL,254,0,0,1,1,?,NULL,NULL);"
+)
+
+INSERT_TEXT_UNIT = "INSERT INTO TextUnit (TextUnitId, Type, Id) VALUES (?,'Document',?);"
+
+INSERT_PUBLICATION_VIEW_ITEM = (
+    "INSERT INTO PublicationViewItem (PublicationViewItemId, PublicationViewId, "
+    "ParentPublicationViewItemId, Title, TitleRich, SchemaType, ChildTemplateSchemaType, "
+    "DefaultDocumentId) VALUES (?,1,?,?,NULL,0,?,?);"
+)
+
+INSERT_PUBLICATION_VIEW_ITEM_DOCUMENT = (
+    "INSERT INTO PublicationViewItemDocument (PublicationViewItemDocumentId, "
+    "PublicationViewItemId, DocumentId) VALUES (?,?,?);"
+)
+
+INSERT_PUBLICATION_VIEW_ITEM_FIELD = (
+    "INSERT INTO PublicationViewItemField (PublicationViewItemFieldId, "
+    "PublicationViewItemId, Value, ValueRich, Type) VALUES (?,?,?,NULL,'name');"
+)
+
+INSERT_MULTIMEDIA = (
+    "INSERT INTO Multimedia(MultimediaId, DataType, MajorType, MinorType, MimeType, "
+    "Caption, FilePath, CategoryType) VALUES(?,?,?,?,?,?,?,?)"
+)
+
+INSERT_DOCUMENT_MULTIMEDIA = "INSERT INTO DocumentMultimedia(DocumentId, MultimediaId) VALUES(?,?)"
