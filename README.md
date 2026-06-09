@@ -5,7 +5,8 @@ Create, extract and compare JWPUB files for JW Library.
 ## Features
 
 - **Create** `.jwpub` publications from HTML folders
-- **Extract** and decrypt existing `.jwpub` files
+- **Extract** and decrypt existing `.jwpub` files to Markdown (with embedded extracts as collapsible regions)
+- **Resolve Bible verses** from a local `nwtsty_E.jwpub` file — replaces `jwpub://b/NWTR/` links with inline verse text
 - **Diff** two `.jwpub` files with a rich HTML side-by-side report
 
 ## Installation
@@ -44,6 +45,22 @@ Parameters:
 ```bash
 jwpub-toolkit extract publication.jwpub --output-dir ./extracted
 ```
+
+Outputs Markdown by default with extracts embedded as collapsible `<details>` blocks.
+
+Options:
+- `--html`: Output raw HTML instead of Markdown
+- `--bible-jwpub path/to/nwtsty_E.jwpub`: Resolve `jwpub://b/NWTR/` Bible links to inline verse text
+
+#### Bible verse resolution
+
+If you supply the NWT Study Bible file (`nwtsty_E.jwpub`), all Bible reference links are replaced with the full verse text:
+
+```bash
+jwpub-toolkit extract publication.jwpub --output-dir ./extracted --bible-jwpub nwtsty_E.jwpub
+```
+
+This handles single verses, multi-verse ranges, cross-chapter ranges, and cross-book ranges.
 
 ### Compare two JWPUBs
 

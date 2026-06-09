@@ -14,6 +14,9 @@ import zipfile
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple, Any
 
+from bs4 import BeautifulSoup
+from markdownify import markdownify as md
+
 from . import crypto
 
 ContentKey = Tuple[str, int]  # (table, row_id)
@@ -354,6 +357,227 @@ def process_jwpub(jwpub_path: str, output_dir: str) -> int:
         _write_html_document(os.path.join(output_dir, "index.html"), "Extracted index", index_html)
         return 0
     finally:
+        try:
+            os.remove(sqlite_path)
+        except OSError:
+            pass
+
+
+def _decrypt_extracts(conn: sqlite3.Connection, full_hash: bytes) -> Dict[int, str]:
+    """Decrypt all Extract rows and return {ExtractId: html_content}."""
+    extracts: Dict[int, str] = {}
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Extract'")
+    if not cur.fetchone():
+        return extracts
+    for row_id, blob in iter_encrypted_rows(conn, "Extract", "Content"):
+        html_text = decrypt_and_inflate(blob, full_hash)
+        if html_text is not None:
+            extracts[row_id] = html_text
+    return extracts
+
+
+def _get_extract_caption(conn: sqlite3.Connection, extract_id: int) -> str:
+    """Get the caption text for an extract."""
+    cur = conn.cursor()
+    cur.execute("SELECT Caption FROM Extract WHERE ExtractId = ?", (extract_id,))
+    row = cur.fetchone()
+    if not row or not row[0]:
+        return f"Extract {extract_id}"
+    caption_html = row[0]
+    text = re.sub(r"<[^>]+>", "", caption_html)
+    return re.sub(r"\s+", " ", text).strip() or f"Extract {extract_id}"
+
+
+def _get_document_extract_ids(conn: sqlite3.Connection, doc_id: int) -> List[int]:
+    """Get all ExtractIds linked to a document, in order."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT ExtractId FROM DocumentExtract WHERE DocumentId = ? ORDER BY DocumentExtractId",
+        (doc_id,)
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def _html_to_markdown(html_text: str) -> str:
+    """Convert HTML fragment to Markdown."""
+    return md(html_text, heading_style="ATX", strip=['style', 'script']).strip()
+
+
+def _extract_html_to_markdown(html_text: str) -> str:
+    """Convert extract HTML to markdown, stripping wrapper divs."""
+    soup = BeautifulSoup(html_text, "html.parser")
+    body = soup.find("body")
+    if body:
+        content = body.decode_contents()
+    else:
+        content = str(soup)
+    return _html_to_markdown(content)
+
+
+def _embed_extracts_in_html(doc_html: str, extract_map: Dict[int, str], conn: sqlite3.Connection) -> str:
+    """Find all <a class="xt" data-xtid="N"> in document HTML and insert
+    placeholder markers after the containing paragraph for later replacement."""
+    soup = BeautifulSoup(doc_html, "html.parser")
+    xt_links = soup.find_all("a", class_="xt", attrs={"data-xtid": True})
+
+    # Group extracts by parent paragraph (preserve order, deduplicate)
+    from collections import OrderedDict
+    para_extracts: OrderedDict = OrderedDict()
+    seen_xtids: set = set()
+    for link in xt_links:
+        xtid = int(link["data-xtid"])
+        if xtid in seen_xtids:
+            continue
+        if xtid not in extract_map:
+            continue
+        seen_xtids.add(xtid)
+        parent = link.find_parent(["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "div"])
+        if parent:
+            para_id = id(parent)
+            if para_id not in para_extracts:
+                para_extracts[para_id] = (parent, [])
+            para_extracts[para_id][1].append(xtid)
+
+    # Insert placeholder markers after each paragraph that references extracts
+    for para_id, (parent_el, xtids) in reversed(list(para_extracts.items())):
+        for xtid in reversed(xtids):
+            marker = soup.new_tag("div")
+            marker["data-extract-placeholder"] = str(xtid)
+            marker.string = f"EXTRACT_PLACEHOLDER_{xtid}"
+            parent_el.insert_after(marker)
+
+    return str(soup)
+
+
+def _document_html_to_markdown(doc_html: str, extract_map: Dict[int, str], conn: sqlite3.Connection) -> str:
+    """Convert a document HTML with embedded extracts to Markdown."""
+    # First insert extract placeholders
+    enriched_html = _embed_extracts_in_html(doc_html, extract_map, conn)
+
+    soup = BeautifulSoup(enriched_html, "html.parser")
+
+    # Extract a title from header or h1
+    title = ""
+    header = soup.find("header")
+    if header:
+        h1 = header.find("h1")
+        if h1:
+            title = h1.get_text(strip=True)
+        header.decompose()
+    else:
+        h1 = soup.find("h1")
+        if h1:
+            title = h1.get_text(strip=True)
+
+    # Convert the main body
+    body = soup.find("body")
+    content_html = body.decode_contents() if body else str(soup)
+
+    # Convert to markdown
+    markdown = _html_to_markdown(content_html)
+
+    # Replace placeholders with collapsible extract blocks
+    # markdownify escapes underscores, so handle both escaped and unescaped forms
+    def replace_placeholder(match: re.Match) -> str:
+        xtid = int(match.group(1))
+        if xtid not in extract_map:
+            return ""
+        caption = _get_extract_caption(conn, xtid)
+        extract_md = _extract_html_to_markdown(extract_map[xtid])
+        return (
+            f"\n<details>\n<summary>{caption}</summary>\n\n"
+            f"{extract_md}\n\n"
+            f"</details>\n"
+        )
+
+    markdown = re.sub(r"EXTRACT\\?_PLACEHOLDER\\?_(\d+)", replace_placeholder, markdown)
+
+    # Clean up excessive blank lines
+    markdown = re.sub(r"\n{3,}", "\n\n", markdown)
+
+    # Add title as h1 at top
+    if title:
+        markdown = f"# {title}\n\n{markdown}"
+
+    return markdown.strip() + "\n"
+
+
+def process_jwpub_markdown(jwpub_path: str, output_dir: str, bible_jwpub_path: Optional[str] = None) -> int:
+    """Extract publication as Markdown files with extracts embedded as collapsible regions.
+
+    Args:
+        jwpub_path: Path to the publication .jwpub file.
+        output_dir: Output directory for markdown files.
+        bible_jwpub_path: Optional path to nwtsty_E.jwpub for resolving Bible verse links.
+    """
+    sqlite_path = extract_sqlite_from_jwpub_to_temp(jwpub_path)
+    try:
+        conn = sqlite3.connect(sqlite_path)
+        identity = read_publication_identity(conn)
+        full_hash = compute_full_hash_bytes(identity)
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Set up verse resolver if Bible jwpub provided
+        resolver = None
+        if bible_jwpub_path:
+            from .bible import BibleVerseResolver, resolve_bible_links_in_markdown
+            resolver = BibleVerseResolver(bible_jwpub_path)
+            resolver.open()
+
+        # Decrypt all extracts
+        extract_map = _decrypt_extracts(conn, full_hash)
+
+        # Get document titles
+        cur = conn.cursor()
+        cur.execute("SELECT DocumentId, Title FROM Document ORDER BY DocumentId")
+        doc_titles = {row[0]: row[1] for row in cur.fetchall()}
+
+        # Process documents
+        index_entries: List[Tuple[str, str]] = []
+        for table, column in discover_content_tables(conn):
+            if table == "Extract":
+                continue
+            for row_id, blob in iter_encrypted_rows(conn, table, column):
+                text = decrypt_and_inflate(blob, full_hash)
+                if text is None:
+                    continue
+
+                if table == "Document":
+                    # Embed extracts for this document
+                    doc_extract_ids = _get_document_extract_ids(conn, row_id)
+                    doc_extracts = {eid: extract_map[eid] for eid in doc_extract_ids if eid in extract_map}
+                    markdown = _document_html_to_markdown(text, doc_extracts, conn)
+                else:
+                    markdown = _html_to_markdown(text)
+
+                # Resolve Bible verse links if enabled
+                if resolver is not None:
+                    markdown = resolve_bible_links_in_markdown(markdown, resolver)
+
+                title = doc_titles.get(row_id, f"{table}:{row_id}") if table == "Document" else f"{table}:{row_id}"
+                filename = _sanitize_filename(f"{table}_{row_id}.md")
+                out_path = os.path.join(output_dir, filename)
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(markdown)
+                index_entries.append((filename, title))
+
+        if resolver is not None:
+            print(f"Resolved {resolver.resolved_count} Bible verse references")
+            resolver.close()
+
+        # Write index as markdown
+        index_lines = [f"# Extracted Publication\n\nTotal documents: {len(index_entries)}\n"]
+        for i, (fn, title) in enumerate(index_entries, 1):
+            index_lines.append(f"{i}. [{title}]({fn})")
+        index_md = "\n".join(index_lines) + "\n"
+        with open(os.path.join(output_dir, "index.md"), "w", encoding="utf-8") as f:
+            f.write(index_md)
+
+        return 0
+    finally:
+        if resolver is not None:
+            resolver.close()
         try:
             os.remove(sqlite_path)
         except OSError:

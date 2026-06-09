@@ -19,8 +19,13 @@ def cmd_create(args: argparse.Namespace) -> int:
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
-    from .extractor import process_jwpub
-    return process_jwpub(args.jwpub, args.output_dir)
+    if args.html:
+        from .extractor import process_jwpub
+        return process_jwpub(args.jwpub, args.output_dir)
+    else:
+        from .extractor import process_jwpub_markdown
+        bible_path = getattr(args, 'bible_jwpub', None)
+        return process_jwpub_markdown(args.jwpub, args.output_dir, bible_jwpub_path=bible_path)
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
@@ -56,7 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     # --- extract ---
     p_extract = subparsers.add_parser("extract", help="Extract and decrypt a .jwpub file")
     p_extract.add_argument("jwpub", help="Path to the .jwpub file")
-    p_extract.add_argument("--output-dir", required=True, help="Output directory for extracted HTML")
+    p_extract.add_argument("--output-dir", required=True, help="Output directory for extracted files")
+    p_extract.add_argument("--html", action="store_true", help="Output raw HTML instead of Markdown")
+    p_extract.add_argument("--bible-jwpub", help="Path to nwtsty_E.jwpub for resolving Bible verse links")
     p_extract.set_defaults(func=cmd_extract)
 
     # --- diff ---
