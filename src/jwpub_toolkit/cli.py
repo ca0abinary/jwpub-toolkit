@@ -25,7 +25,12 @@ def cmd_extract(args: argparse.Namespace) -> int:
     else:
         from .extractor import process_jwpub_markdown
         bible_path = getattr(args, 'bible_jwpub', None)
-        return process_jwpub_markdown(args.jwpub, args.output_dir, bible_jwpub_path=bible_path)
+        no_extracts = getattr(args, 'no_extracts', False)
+        return process_jwpub_markdown(
+            args.jwpub, args.output_dir,
+            bible_jwpub_path=bible_path,
+            no_extracts=no_extracts,
+        )
 
 
 def cmd_diff(args: argparse.Namespace) -> int:
@@ -64,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     p_extract.add_argument("--output-dir", required=True, help="Output directory for extracted files")
     p_extract.add_argument("--html", action="store_true", help="Output raw HTML instead of Markdown")
     p_extract.add_argument("--bible-jwpub", help="Path to nwtsty_E.jwpub for resolving Bible verse links")
+    p_extract.add_argument("--no-extracts", action="store_true", help="Exclude extracts for cleaner output")
     p_extract.set_defaults(func=cmd_extract)
 
     # --- diff ---

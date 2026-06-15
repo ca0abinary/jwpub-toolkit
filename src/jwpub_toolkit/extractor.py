@@ -503,13 +503,20 @@ def _document_html_to_markdown(doc_html: str, extract_map: Dict[int, str], conn:
     return markdown.strip() + "\n"
 
 
-def process_jwpub_markdown(jwpub_path: str, output_dir: str, bible_jwpub_path: Optional[str] = None) -> int:
+def _strip_unresolved_links(markdown: str) -> str:
+    """Convert unresolved internal links (jwpub://, jwpub-media://) to plain text."""
+    # [link text](jwpub://...) or [link text](jwpub-media://...) → link text
+    return re.sub(r"\[([^\]]*)\]\(jwpub(?:-media)?://[^)]*\)", r"\1", markdown)
+
+
+def process_jwpub_markdown(jwpub_path: str, output_dir: str, bible_jwpub_path: Optional[str] = None, no_extracts: bool = False) -> int:
     """Extract publication as Markdown files with extracts embedded as collapsible regions.
 
     Args:
         jwpub_path: Path to the publication .jwpub file.
         output_dir: Output directory for markdown files.
         bible_jwpub_path: Optional path to nwtsty_E.jwpub for resolving Bible verse links.
+        no_extracts: If True, exclude extracts from output for cleaner documents.
     """
     sqlite_path = extract_sqlite_from_jwpub_to_temp(jwpub_path)
     try:
@@ -526,7 +533,7 @@ def process_jwpub_markdown(jwpub_path: str, output_dir: str, bible_jwpub_path: O
             resolver.open()
 
         # Decrypt all extracts
-        extract_map = _decrypt_extracts(conn, full_hash)
+        extract_map = _decrypt_extracts(conn, full_hash) if not no_extracts else {}
 
         # Get document titles
         cur = conn.cursor()
@@ -554,6 +561,9 @@ def process_jwpub_markdown(jwpub_path: str, output_dir: str, bible_jwpub_path: O
                 # Resolve Bible verse links if enabled
                 if resolver is not None:
                     markdown = resolve_bible_links_in_markdown(markdown, resolver)
+
+                # Strip remaining unresolved internal links to plain text
+                markdown = _strip_unresolved_links(markdown)
 
                 title = doc_titles.get(row_id, f"{table}:{row_id}") if table == "Document" else f"{table}:{row_id}"
                 filename = _sanitize_filename(f"{table}_{row_id}.md")
